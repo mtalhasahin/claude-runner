@@ -35,6 +35,9 @@ export const HOW_TO_PLAY_TEXT = [
   '/runner opens or closes the pane, /runner stats shows your numbers.',
 ].join('\n')
 
+export const NO_SURFACE_TEXT =
+  'this session has no screen that draws panes (the Claude desktop app does not draw plugin panes yet). Run claude in a terminal to play; the stats still count here.'
+
 export const OPENED_TEXT =
   'Claude Runner opened. Click the game, then SPACE or ↑ to jump, P to pause. /runner help for more.'
 

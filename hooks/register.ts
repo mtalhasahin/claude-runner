@@ -5,6 +5,7 @@ import {
   COMMAND_DESCRIPTION,
   COMMAND_NAME,
   HOW_TO_PLAY_TEXT,
+  NO_SURFACE_TEXT,
   OPENED_TEXT,
   PANE_COLUMNS,
   PANE_ID,
@@ -74,12 +75,22 @@ function apply($: EngineInterface, runner: Runner, event: SessionEvent): void {
  * undrawn (a terminal too narrow for an unasked pane, or a surface that draws
  * no panes): it would otherwise appear later, at a moment nobody asked for.
  *
- * @returns null once it is drawn, else the engine's reason it is not
+ * A session with no surface at all (a `-p` run; seemingly the desktop app's
+ * sessions too, where "opened" drew nothing) gets nothing opened: the engine
+ * calls the pane placed there, with nothing to draw it.
+ *
+ * @returns null once it is drawn, else the reason it is not
  */
 async function openPane(
   $: EngineInterface,
   runner: Runner,
 ): Promise<string | null> {
+  const surfaces = await $.session.surfaces()
+
+  if (surfaces.length === 0) {
+    return NO_SURFACE_TEXT
+  }
+
   const opened = await $.ui.open({
     id: PANE_ID,
     title: PANE_TITLE,

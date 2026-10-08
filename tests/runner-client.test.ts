@@ -33,6 +33,7 @@ function seatsEngine(on: On): { closed: string[]; clock: MockClock } {
   on('turn.start', ($, event) => ({ turnId: event.turnId }))
   on('turn.complete', ($, event) => ({ text: event.answer }))
   on('command.register', ($, event) => ({ value: { command: event.name } }))
+  on('session.surfaces', () => ({ value: ['terminal' as const] }))
   on('ui.open', ($, event) => {
     openPaneIds.add(event.id)
 

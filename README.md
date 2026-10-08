@@ -13,7 +13,7 @@ change between Claude Code releases without notice. Written against **Claude Cod
 The plugin is named `runner` (the game is still called Claude Runner): from 2.1.293 a
 third-party plugin's name may not start with `claude-`.
 
-> Status: **0.2.1**, all five phases built. The game follows Claude's turn, shows score,
+> Status: **0.2.2**, all five phases built. The game follows Claude's turn, shows score,
 > best and session time, stores its statistics, and has combos, turn milestones, easter eggs
 > and a little landing dust. Sound is the one Phase 5 item left out (see the limits).
 
@@ -215,9 +215,12 @@ Possible refinements, not used yet:
 These come from the declarations in `.claude-plugin/types/` and from testing. Each one changes
 something the original spec asked for.
 
-- **The terminal only.** The desktop app does not draw plugin panes yet: the engine describes
-  the pane over the wire, but the app does not implement that side of the protocol (found
-  while building `waitroom`). The hooks still fire there, so the statistics still count.
+- **The terminal only.** The desktop app does not draw plugin panes yet. Its 2.9939 bundle
+  has none of the render protocol's messages (`ui_render`, `ui_open`, `ui_client_module`),
+  and in its sessions the engine still answered `/runner` with "placed" while nothing
+  appeared. So the mod asks `$.session.surfaces()` first: with no surface, `/runner` says
+  the pane cannot be shown and to play in a terminal, and a turn opens nothing. The hooks still
+  fire there, so the statistics still count.
 - **No Canvas or DOM.** Hooks and surface modules run in an environment with neither. The
   game is drawn as a grid of character cells with `Box` and `Text`. That is the "terminal
   look" the spec asked for, but not Canvas.

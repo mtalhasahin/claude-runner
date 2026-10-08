@@ -52,6 +52,7 @@ function seatsEngine(
   on('turn.start', ($, event) => ({ turnId: event.turnId }))
   on('turn.complete', ($, event) => ({ text: event.answer }))
   on('command.register', ($, event) => ({ value: { command: event.name } }))
+  on('session.surfaces', () => ({ value: ['terminal' as const] }))
   on('ui.open', ($, event) => {
     opened.push(event.id)
     openPaneIds.add(event.id)
@@ -106,6 +107,38 @@ function textOf(tree: unknown): string {
 }
 
 describe('register', () => {
+  test('in a session with no screen, /runner says so and opens nothing', async (
+    $,
+    on,
+  ) => {
+    const opened: string[] = []
+
+    mock.clock(on)
+    mock.store(on)
+    on('session.start', ($, event) => ({ cwd: event.cwd }))
+    on('command.register', ($, event) => ({ value: { command: event.name } }))
+    on('session.surfaces', () => ({ value: [] }))
+    on('ui.open', ($, event) => {
+      opened.push(event.id)
+
+      return { value: { isPlaced: true as const } }
+    })
+    on('ui.panes', () => ({ value: [] }))
+    on('ui.invalidate', () => ({ value: undefined }))
+    on('turn.start', ($, event) => ({ turnId: event.turnId }))
+
+    await $.session.start(SESSION)
+
+    const { text } = await $.command.run(RUNNER_COMMAND)
+
+    expect(text).toContain('Claude Runner cannot be shown here: this session has no screen')
+    expect(text).toContain('Run claude in a terminal to play')
+
+    await $.turn.start({ text: 'hi', turnId: 'turn-1' })
+
+    expect(opened, 'neither /runner nor a turn opens a pane').toEqual([])
+  })
+
   test('where the pane would wait undrawn, /runner says why and closes it', async (
     $,
     on,
@@ -116,6 +149,7 @@ describe('register', () => {
     mock.store(on)
     on('session.start', ($, event) => ({ cwd: event.cwd }))
     on('command.register', ($, event) => ({ value: { command: event.name } }))
+    on('session.surfaces', () => ({ value: ['terminal' as const] }))
     on('ui.panes', () => ({ value: [] }))
     on('ui.open', () => ({
       value: { isPlaced: false, reason: 'the attached surfaces place no panes' },
@@ -164,10 +198,11 @@ describe('register', () => {
     $,
     on,
   ) => {
-    const { opened } = seatsEngine(on)
+    const { opened, clock } = seatsEngine(on)
 
     await $.session.start(SESSION)
     await $.turn.start({ text: 'Analyze this project', turnId: 'turn-1' })
+    await clock.advance(10)
 
     expect(opened).toEqual(['runner'])
     expect(textOf(await $.ui.render(PANE))).toContain('Claude is working...')
