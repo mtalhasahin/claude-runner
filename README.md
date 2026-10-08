@@ -13,7 +13,7 @@ change between Claude Code releases without notice. Written against **Claude Cod
 The plugin is named `runner` (the game is still called Claude Runner): from 2.1.293 a
 third-party plugin's name may not start with `claude-`.
 
-> Status: **0.2.0**, all five phases built. The game follows Claude's turn, shows score,
+> Status: **0.2.1**, all five phases built. The game follows Claude's turn, shows score,
 > best and session time, stores its statistics, and has combos, turn milestones, easter eggs
 > and a little landing dust. Sound is the one Phase 5 item left out (see the limits).
 
@@ -21,6 +21,7 @@ third-party plugin's name may not start with `claude-`.
 
 ```
 CLAUDE RUNNER
+Click game · SPACE/↑ jump · P pause
 Score 00184  Best 06210  Session 00:18
                   Bug
    [o]            █
@@ -42,7 +43,9 @@ turn leaves it going. `Session` is Claude's turn time: it counts while Claude wo
 counting while the runner is down, and stops when Claude answers.
 
 Click the game first: keys reach it only while it has the focus, and Escape hands them back
-to the prompt. The obstacles are `Bug`, `TODO`, `Error`, `Timeout`, `Exception` and
+to the prompt. The pane says so under its title at all times, the game says "Click here,
+then SPACE to jump" until your first key, `/runner` says it when it opens the pane, and
+`/runner help` has the whole of it. The obstacles are `Bug`, `TODO`, `Error`, `Timeout`, `Exception` and
 `Merge Conflict`. The run speeds up from 14 to 30 columns a second over 90 seconds and the
 gaps tighten; the score grows about 10 points a second at the start. A test bot that jumps
 with a fixed lead time survives two minutes on every seed tried, so every course is
@@ -201,7 +204,7 @@ Possible refinements, not used yet:
 |---|---|
 | A side pane | `$.ui.open({ id, title, rows, columns })`, drawn by a `ui.render` hook on `{ component: 'Pane' }` whose `requestId` is the pane's id |
 | Redraw on a state change | `$.ui.invalidate('ui.render')` |
-| `/runner`, `/runner stats` | `$.command.register({ name, description, argumentHint, immediate: true })` in `session.start`, answered by a `command.run` hook; `immediate` lets it run while a turn is still going |
+| `/runner`, `/runner stats`, `/runner help` | `$.command.register({ name, description, argumentHint, immediate: true })` in `session.start`, answered by a `command.run` hook; `immediate` lets it run while a turn is still going |
 | Knowing the person closed it | `ui.close` hook, `event.origin.kind === 'person'` |
 | The game loop and keys | a `Client` element: a surface module running on the drawing thread with its own frame clock (`surface.every`) and key listener (`surface.onKey`) |
 | A finished run's score | `surface.post` in the game, a `ui.message` hook in the hooks module |

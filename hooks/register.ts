@@ -4,6 +4,8 @@ import {
   CLOSE_AFTER_ANSWER_MILLISECONDS,
   COMMAND_DESCRIPTION,
   COMMAND_NAME,
+  HOW_TO_PLAY_TEXT,
+  OPENED_TEXT,
   PANE_COLUMNS,
   PANE_ID,
   PANE_ROWS,
@@ -243,7 +245,7 @@ export function register(on: On, options: PluginOptions): void {
     await $.command.register({
       name: COMMAND_NAME,
       description: COMMAND_DESCRIPTION,
-      argumentHint: '[stats]',
+      argumentHint: '[stats|help]',
       immediate: true,
     })
 
@@ -332,19 +334,31 @@ export function register(on: On, options: PluginOptions): void {
 
     const statistics = await loadedStatistics($, runner)
 
-    return paneView({ Box, Text, Client }, runner.sessionState, statistics, {
-      seed: runner.gameSeed,
-      phase: runner.sessionState.phase,
-      turnNumber: runner.sessionState.turnNumber,
-      turnElapsedMilliseconds: await turnElapsedOf($, runner),
-      bestScore: statistics.bestScore,
-      areMilestonesEnabled: runner.areMilestonesEnabled,
-    })
+    return paneView(
+      { Box, Text, Client },
+      runner.sessionState,
+      statistics,
+      {
+        seed: runner.gameSeed,
+        phase: runner.sessionState.phase,
+        turnNumber: runner.sessionState.turnNumber,
+        turnElapsedMilliseconds: await turnElapsedOf($, runner),
+        bestScore: statistics.bestScore,
+        areMilestonesEnabled: runner.areMilestonesEnabled,
+      },
+      event.props.isFocused,
+    )
   })
 
   on('command.run', { command: COMMAND_NAME }, async ($, event, next) => {
-    if (event.args.trim().toLowerCase() === 'stats') {
+    const argument = event.args.trim().toLowerCase()
+
+    if (argument === 'stats') {
       return { text: statisticsTextOf(await loadedStatistics($, runner)) }
+    }
+
+    if (argument === 'help') {
+      return { text: HOW_TO_PLAY_TEXT }
     }
 
     if (runner.isPaneOpen) {
@@ -367,7 +381,7 @@ export function register(on: On, options: PluginOptions): void {
     return {
       text:
         notPlacedReason === null
-          ? 'Claude Runner opened.'
+          ? OPENED_TEXT
           : `Claude Runner cannot be shown here: ${notPlacedReason}`,
     }
   })

@@ -18,6 +18,7 @@ function clientStateOf(
     bestScore: 6_210,
     isLastRunBest: false,
     areMilestonesEnabled: true,
+    hasPressedKey: true,
     ...overrides,
   }
 }

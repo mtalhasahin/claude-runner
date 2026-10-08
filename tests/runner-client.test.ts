@@ -151,6 +151,37 @@ describe('runner-client', () => {
     await ui.unmount()
   })
 
+  test('how to play stays on screen until the first key', async ($, on) => {
+    seatsEngine(on)
+
+    const ui = await mountedPane($, 'terminal')
+    const game = (text: RegExp) => ui.find({ type: 'Text', text, in: 'game' })
+
+    expect(
+      await ui.find({ type: 'Text', text: 'Click game · SPACE/↑ jump · P pause' }),
+      'the controls under the title',
+    ).toBeDefined()
+
+    await $.turn.start({ text: 'hi', turnId: 'turn-1' })
+    await ui.advance(2_000)
+
+    expect(await game(/Click here, then SPACE to jump/), 'still there at 2 s').toBeDefined()
+
+    await ui.key({ key: 'up', in: 'game' })
+    await ui.advance(60)
+
+    expect(await game(/Click here/), 'gone after a key').toBeUndefined()
+
+    await ui.redraw({ ...PANE_PROPS, isFocused: true })
+
+    expect(
+      await ui.find({ type: 'Text', text: 'SPACE/↑ jump · P pause · Esc back' }),
+      'once the pane holds the keys, how to hand them back',
+    ).toBeDefined()
+
+    await ui.unmount()
+  })
+
   test('idle, Space starts a run without Claude', async ($, on) => {
     seatsEngine(on)
 

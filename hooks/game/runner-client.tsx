@@ -93,9 +93,9 @@ function started(
     const { game } = instance.state
 
     if (isJumpKey(keyEvent)) {
-      commit({ ...instance.state, game: pressedJump(game) })
+      commit({ ...instance.state, game: pressedJump(game), hasPressedKey: true })
     } else if (isPauseKey(keyEvent)) {
-      commit({ ...instance.state, game: pressedPause(game) })
+      commit({ ...instance.state, game: pressedPause(game), hasPressedKey: true })
     }
   })
 

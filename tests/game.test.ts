@@ -233,6 +233,7 @@ describe('game', () => {
           bestScore: 0,
           isLastRunBest: false,
           areMilestonesEnabled: true,
+          hasPressedKey: true,
         },
         PLAYFIELD_COLUMNS,
       )[6]!
@@ -276,6 +277,7 @@ describe('game', () => {
         bestScore: 6_210,
         isLastRunBest: false,
         areMilestonesEnabled: true,
+        hasPressedKey: true,
       },
       PLAYFIELD_COLUMNS,
     )

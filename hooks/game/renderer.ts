@@ -43,11 +43,6 @@ type Cell = {
 }
 
 /**
- * How long a run shows how to play before it shows its count.
- */
-const HINT_MILLISECONDS = 4_000
-
-/**
  * How long a combo or an easter egg stays on the message line.
  */
 const EVENT_SHOWN_MILLISECONDS = 1_800
@@ -134,7 +129,7 @@ function messageRunOf(state: ClientState, width: number): Run {
 
 /**
  * The running message, most notable first: a combo or easter egg just now,
- * a turn milestone, how to play at the start, else the count.
+ * a turn milestone, how to play until the first key, else the count.
  */
 function runningMessageOf(
   state: ClientState,
@@ -171,15 +166,15 @@ function runningMessageOf(
     return { text: centered(milestone), color: '#539bf5' }
   }
 
-  const isNew =
-    game.runningMilliseconds < HINT_MILLISECONDS && game.clearedCount === 0
-
-  return {
-    text: centered(
-      isNew ? 'Click here · SPACE jump · P pause' : `Cleared ${game.clearedCount}`,
-    ),
-    isDim: true,
+  if (!state.hasPressedKey) {
+    return {
+      text: centered('Click here, then SPACE to jump'),
+      color: '#539bf5',
+      isBold: true,
+    }
   }
+
+  return { text: centered(`Cleared ${game.clearedCount}`), isDim: true }
 }
 
 function groundTextureOf(distance: number, width: number): string {

@@ -53,6 +53,11 @@ export type ClientState = {
    */
   isLastRunBest: boolean
   areMilestonesEnabled: boolean
+  /**
+   * False until the person's first key reaches the game: until then the
+   * message line says how to play.
+   */
+  hasPressedKey: boolean
 }
 
 /**
@@ -80,6 +85,7 @@ export function initialClientState(props: LinkProps): ClientState {
     bestScore: props.bestScore,
     isLastRunBest: false,
     areMilestonesEnabled: props.areMilestonesEnabled,
+    hasPressedKey: false,
   }
 }
 
@@ -216,6 +222,7 @@ export function isRedrawNeeded(
     previous.phase !== next.phase ||
     previous.bestScore !== next.bestScore ||
     previous.isLastRunBest !== next.isLastRunBest ||
+    previous.hasPressedKey !== next.hasPressedKey ||
     secondOf(previous.turnMilliseconds) !== secondOf(next.turnMilliseconds)
   )
 }

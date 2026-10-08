@@ -238,7 +238,14 @@ describe('register', () => {
 
     const openedByCommand = await $.command.run(RUNNER_COMMAND)
 
-    expect(openedByCommand.text).toContain('Claude Runner opened.')
+    expect(openedByCommand.text).toBe(
+      'Claude Runner opened. Click the game, then SPACE or ↑ to jump, P to pause. /runner help for more.',
+    )
+
+    const help = await $.command.run({ ...RUNNER_COMMAND, args: 'help' })
+
+    expect(help.text).toContain('1. Click the game in the pane: keys reach it only then.')
+    expect(opened, '/runner help opens nothing').toEqual(['runner'])
 
     const closedByCommand = await $.command.run(RUNNER_COMMAND)
 

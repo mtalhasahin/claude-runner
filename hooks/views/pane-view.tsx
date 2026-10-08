@@ -19,14 +19,27 @@ type PaneElements = Pick<Elements['terminal'], 'Box' | 'Text'> &
 export const GAME_KEY = 'game'
 
 /**
- * The pane's body: the title, the game where the surface can run it, the
- * session's status line and, once a turn has finished, how long it took.
+ * The controls, always under the title: keys reach the game only once it is
+ * clicked, so that comes first until the pane holds the keyboard; then how
+ * to hand the keys back. Both carry the keys themselves.
+ */
+export function controlsTextOf(isPaneFocused: boolean): string {
+  return isPaneFocused
+    ? 'SPACE/↑ jump · P pause · Esc back'
+    : 'Click game · SPACE/↑ jump · P pause'
+}
+
+/**
+ * The pane's body: the title and the controls, the game where the surface
+ * can run it, the session's status line and, once a turn has finished, how
+ * long it took.
  */
 export function paneView(
   elements: PaneElements,
   state: SessionState,
   statistics: Statistics,
   game: RunnerClientProps,
+  isPaneFocused: boolean,
 ): RenderElement {
   const { Box, Text, Client } = elements
 
@@ -42,6 +55,9 @@ export function paneView(
       <Text bold color="#d97757">
         CLAUDE RUNNER
       </Text>
+      {Client === undefined ? null : (
+        <Text color="#539bf5">{controlsTextOf(isPaneFocused)}</Text>
+      )}
       {Client === undefined ? null : (
         <Client
           key={GAME_KEY}
