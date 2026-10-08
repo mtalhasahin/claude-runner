@@ -1,0 +1,4 @@
+{
+  "description": "Claude Runner: the side pane, its /runner command, and the turn and tool events that drive its state",
+  "modules": ["./register.ts"]
+}

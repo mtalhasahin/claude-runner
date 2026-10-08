@@ -1,0 +1,24 @@
+{
+  "name": "runner",
+  "owner": {
+    "name": "mtalhasahin"
+  },
+  "plugins": [
+    {
+      "name": "runner",
+      "source": "./",
+      "description": "Claude Runner: a small endless runner in a side pane that plays while Claude works, starts with Claude's turn and stops when Claude answers.",
+      "version": "0.1.0",
+      "license": "MIT",
+      "keywords": [
+        "waiting",
+        "game",
+        "endless-runner",
+        "pane",
+        "function-hooks",
+        "mod"
+      ]
+    }
+  ],
+  "description": "Claude Runner: an endless runner for the pane while Claude works."
+}

@@ -1,0 +1,245 @@
+import type { On, RenderPropsOf } from 'claude-code'
+import type { Engine } from 'claude-code/testing'
+import { describe, expect, mock, test, tier } from 'claude-code/testing'
+
+import { FRAME_ROWS } from '../hooks/game/renderer'
+
+tier('user')
+
+const PANE_PROPS: RenderPropsOf['Pane'] = {
+  title: 'Claude Runner',
+  isFocused: false,
+  bodyColumns: 40,
+  placement: 'dock',
+  scroll: { offset: 0, bodyRows: 14 },
+  view: {},
+}
+
+const GAME_COLUMNS = 38
+
+/**
+ * Answers the engine beneath the plugin: turns, commands and panes, a wide
+ * terminal that places every pane.
+ */
+function seatsEngine(on: On): void {
+  const openPaneIds = new Set<string>()
+
+  mock.clock(on)
+  mock.store(on)
+  on('session.start', ($, event) => ({ cwd: event.cwd }))
+  on('turn.start', ($, event) => ({ turnId: event.turnId }))
+  on('turn.complete', ($, event) => ({ text: event.answer }))
+  on('command.register', ($, event) => ({ value: { command: event.name } }))
+  on('ui.open', ($, event) => {
+    openPaneIds.add(event.id)
+
+    return { value: { isPlaced: true as const } }
+  })
+  on('ui.close', ($, event) => {
+    openPaneIds.delete(event.id)
+
+    return { value: undefined }
+  })
+  on('ui.panes', () => ({
+    value: [...openPaneIds].map(id => ({
+      id,
+      title: id,
+      isShown: true,
+      isFocused: false,
+      isPlaced: true,
+    })),
+  }))
+}
+
+async function mountedPane($: Engine, surface: 'terminal' | 'desktop') {
+  await $.session.start({ surface, isInteractive: true, cwd: '/work' })
+
+  const ui = await $.ui.mount({
+    plugin: 'runner',
+    surface,
+    component: 'Pane',
+    requestId: 'runner',
+    props: PANE_PROPS,
+    viewport: { columns: 160, rows: 40, isFullscreen: true },
+  })
+
+  await ui.resize({ columns: GAME_COLUMNS, rows: FRAME_ROWS, in: 'game' })
+
+  return ui
+}
+
+function completion(
+  reason: 'answer' | 'error',
+  turnId: string,
+): Parameters<Engine['turn']['complete']>[0] {
+  return {
+    reason,
+    answer: '',
+    durationMs: 1_000,
+    isAborted: false,
+    turnId,
+  }
+}
+
+describe('runner-client', () => {
+  for (const surface of ['terminal', 'desktop'] as const) {
+    test(`${surface}: waits, runs with the turn, halts on the answer`, async (
+      $,
+      on,
+    ) => {
+      seatsEngine(on)
+
+      const ui = await mountedPane($, surface)
+      const game = (text: RegExp) => ui.find({ type: 'Text', text, in: 'game' })
+
+      expect(await game(/Waiting for Claude/), 'idle').toBeDefined()
+
+      await ui.advance(1_000)
+
+      expect(
+        await game(/Score 00000  Best 00000  Session 00:00/),
+        'idle: no time',
+      ).toBeDefined()
+
+      await $.turn.start({ text: 'Analyze this project', turnId: 'turn-1' })
+
+      expect(await game(/Click here/), 'running at once').toBeDefined()
+
+      await ui.advance(1_500)
+
+      expect(await game(/Score 0001\d .* Session 00:01/), 'scoring').toBeDefined()
+
+      await $.turn.complete(completion('answer', 'turn-1'))
+
+      const halted = await game(/New best!  ·  Score 1\d/)
+
+      expect(halted, 'halted on the answer; with no best yet, a new one').toBeDefined()
+
+      await ui.advance(2_000)
+
+      expect(
+        await game(/Session 00:01/),
+        "stopped at the engine's duration",
+      ).toBeDefined()
+
+      await $.turn.start({ text: 'And again', turnId: 'turn-2' })
+
+      expect(await game(/Score 00000 .* Session 00:00/), 'a fresh run').toBeDefined()
+
+      await ui.unmount()
+    })
+  }
+
+  test('a failed turn flashes GAME OVER', async ($, on) => {
+    seatsEngine(on)
+
+    const ui = await mountedPane($, 'terminal')
+    const game = (text: RegExp) => ui.find({ type: 'Text', text, in: 'game' })
+
+    await $.turn.start({ text: 'hi', turnId: 'turn-1' })
+    await ui.advance(600)
+    await $.turn.complete(completion('error', 'turn-1'))
+
+    expect(await game(/GAME OVER/), 'lit').toBeDefined()
+
+    await ui.advance(300)
+
+    expect(await game(/GAME OVER/), 'dark half of the blink').toBeUndefined()
+
+    await ui.advance(2_000)
+
+    expect(await game(/GAME OVER/), 'settled lit').toBeDefined()
+    expect(
+      await ui.find({ type: 'Text', text: '[x]', in: 'game' }),
+      'the runner shows the crash',
+    ).toBeDefined()
+
+    await ui.unmount()
+  })
+
+  test('keys: Space and Up jump, P pauses, Space retries a hit', async (
+    $,
+    on,
+  ) => {
+    seatsEngine(on)
+
+    const ui = await mountedPane($, 'terminal')
+    const game = (text: RegExp) => ui.find({ type: 'Text', text, in: 'game' })
+
+    await $.turn.start({ text: 'hi', turnId: 'turn-1' })
+    await ui.key({ key: 'p', in: 'game' })
+
+    expect(await game(/PAUSED/)).toBeDefined()
+
+    await ui.key({ key: ' ', in: 'game' })
+    await ui.advance(6_000)
+
+    expect(
+      await game(/NEW BEST!  ·  SPACE to retry/),
+      'nobody jumped; with no best yet, the first run is one',
+    ).toBeDefined()
+
+    await ui.key({ key: 'up', in: 'game' })
+    await ui.advance(120)
+
+    expect(await game(/SPACE to retry/), 'retried').toBeUndefined()
+
+    await ui.unmount()
+  })
+
+  test('scores and turns land in the stored statistics and /runner stats', async (
+    $,
+    on,
+  ) => {
+    seatsEngine(on)
+
+    const ui = await mountedPane($, 'terminal')
+
+    await $.turn.start({ text: 'hi', turnId: 'turn-1' })
+    await ui.post({ kind: 'run-ended', score: 1_840 }, { in: 'game' })
+    await ui.post({ kind: 'run-ended', score: 920 }, { in: 'game' })
+    await ui.post({ kind: 'not-a-run', score: 99_999 }, { in: 'game' })
+    await $.turn.complete({ ...completion('answer', 'turn-1'), durationMs: 84_000 })
+
+    const { text } = await $.command.run({
+      command: 'runner',
+      args: 'stats',
+      origin: { kind: 'composer' },
+      presentation: { isFullscreen: true, columns: 160 },
+    })
+
+    expect(text).toContain('Games:           2')
+    expect(text).toContain('Best Score:      1840')
+    expect(text).toContain('Claude Sessions: 1')
+    expect(text).toContain('Waiting Time:    01m 24s')
+
+    expect(
+      await ui.find({ type: 'Text', text: /Best 01840/, in: 'game' }),
+      'the best reaches the game as a prop',
+    ).toBeDefined()
+
+    await ui.unmount()
+  })
+
+  test('without Client (mobile), the pane still shows its status', async (
+    $,
+    on,
+  ) => {
+    seatsEngine(on)
+    await $.session.start({ surface: 'mobile', isInteractive: true, cwd: '/work' })
+
+    const ui = await $.ui.mount({
+      plugin: 'runner',
+      surface: 'mobile',
+      component: 'Pane',
+      requestId: 'runner',
+      props: PANE_PROPS,
+    })
+
+    expect(
+      await ui.find({ type: 'Text', text: /Waiting for Claude/ }),
+    ).toBeDefined()
+
+    await ui.unmount()
+  })
+})

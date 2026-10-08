@@ -1,0 +1,31 @@
+{
+  "name": "runner",
+  "version": "0.1.0",
+  "description": "Claude Runner: a small endless-runner side pane that plays while Claude works. It opens when a turn starts, follows the session's state (working, waiting for a tool, thinking, completed, error) and stops when Claude answers. /runner opens or closes it by hand.",
+  "author": {
+    "name": "mtalhasahin"
+  },
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open when Claude starts working",
+      "description": "Open the Claude Runner pane on its own when a turn starts. The terminal only places a pane a plugin opens unasked when it is wide enough (144 columns, 110 once you have opened it yourself); /runner opens it at any width. Closing the pane yourself turns this off until you open it again with /runner.",
+      "required": false,
+      "default": true
+    },
+    "closeOnComplete": {
+      "type": "boolean",
+      "title": "Close when Claude answers",
+      "description": "Close the pane 5 seconds after Claude answers, when it opened on its own at the start of that turn; it opens again with the next turn. A pane you opened with /runner stays, and so does one showing an error.",
+      "required": false,
+      "default": true
+    },
+    "milestones": {
+      "type": "boolean",
+      "title": "Milestone messages",
+      "description": "Show a message in the game when Claude's turn runs long: at 30 seconds, 1, 2 and 5 minutes.",
+      "required": false,
+      "default": true
+    }
+  }
+}
