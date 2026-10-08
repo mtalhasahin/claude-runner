@@ -1,8 +1,9 @@
 # Claude Runner
 
-A small endless runner that plays in a side pane while Claude works. It opens when a turn
-starts, follows what Claude is doing (working, waiting for a tool, thinking), and stops when
-Claude answers. It keeps a best score and a few counts across sessions.
+A small endless runner that plays in a side pane while Claude works. Claude's turn starts a
+run and the run follows what Claude is doing (working, waiting for a tool, thinking), but only
+you end it: a quick answer does not cut your game short. It keeps a best score and a few
+counts across sessions.
 
 Built as a Claude Code **mod**: a plugin whose behaviour lives in a function-hooks module
 (`register(on, options)`, hooks of the shape `($, event, next)`). Early access: the API may
@@ -12,7 +13,7 @@ change between Claude Code releases without notice. Written against **Claude Cod
 The plugin is named `runner` (the game is still called Claude Runner): from 2.1.293 a
 third-party plugin's name may not start with `claude-`.
 
-> Status: **Phase 5**, all five phases built. The game follows Claude's turn, shows score,
+> Status: **0.2.0**, all five phases built. The game follows Claude's turn, shows score,
 > best and session time, stores its statistics, and has combos, turn milestones, easter eggs
 > and a little landing dust. Sound is the one Phase 5 item left out (see the limits).
 
@@ -32,11 +33,13 @@ Claude is working...
 
 | Key | What it does |
 |---|---|
-| Space or ↑ | jump; resume a pause; retry after a hit |
+| Space or ↑ | start a run; jump; resume a pause; retry after a hit |
 | P | pause / resume |
 
-The keys work only while Claude is working: the run starts with Claude's turn and ends with
-it. `Session` is Claude's turn time, and it keeps counting while the runner is down.
+Claude's turn starts a run when none is going; Space starts one any time. A run ends only
+when you hit something (or close the pane): Claude answering, failing or starting its next
+turn leaves it going. `Session` is Claude's turn time: it counts while Claude works, keeps
+counting while the runner is down, and stops when Claude answers.
 
 Click the game first: keys reach it only while it has the focus, and Escape hands them back
 to the prompt. The obstacles are `Bug`, `TODO`, `Error`, `Timeout`, `Exception` and
@@ -78,8 +81,7 @@ Claude Sessions: 86
 Waiting Time:    04h 21m
 ```
 
-- **Games**: runs that ended, by a hit, by Claude's answer or by Claude's failure. A run
-  already down when Claude answers counts once.
+- **Games**: runs that ended in a hit.
 - **Claude Sessions**: main-loop turns that ended, and **Waiting Time** their total length.
 
 They live in the plugin's own `$.store` (a JSON file under the Claude configuration
@@ -121,7 +123,7 @@ Options (in `~/.claude/settings.json` under `pluginConfigs["runner"].options`, o
 | Option | Default | What it does |
 |---|---|---|
 | `autoOpen` | `true` | Open the pane when a turn starts. |
-| `closeOnComplete` | `true` | Close the pane 5 s after Claude answers, when it opened on its own at that turn's start. A pane opened with `/runner` stays, and so does one showing an error. A new turn within the 5 s keeps it up. |
+| `closeOnComplete` | `true` | Once Claude has answered and no run is being played, close the pane 5 s later, when it opened on its own at that turn's start. While you play (or have paused), it stays; it closes 5 s after your run ends. A pane opened with `/runner` stays, and so does one showing an error. A new turn or a new run within the 5 s keeps it up. |
 | `milestones` | `true` | Show the long-turn messages at 30 s, 1, 2 and 5 minutes. |
 
 `closeOnComplete` is the spec's "minimize when Claude is done": the pane API has no collapse,
@@ -169,9 +171,12 @@ tool calls inside it, on the **main loop only**: a subagent's tool calls and its
 | `turn.start` | | `WORKING` | a fresh run starts at once |
 | `tool.call`, entering `next(event)` | main loop | `WAITING_FOR_TOOL` | the course runs at 70 % |
 | `tool.call`, `next(event)` settled | no other tool still running | `WAITING_FOR_RESPONSE` | full speed again |
-| `turn.complete` | `reason: 'answer'` | `COMPLETED` | halts; "Run over · Score N" (or "New best!"); the clock stops |
-| `turn.complete` | `reason: 'aborted'` (Esc) | `COMPLETED` ("Interrupted") | halts |
-| `turn.complete` | `reason: 'error'` or `'refusal'` | `ERROR` | `[x]`, GAME OVER blinks for 1.5 s |
+| `turn.complete` | `reason: 'answer'` | `COMPLETED` | keeps running; the clock stops |
+| `turn.complete` | `reason: 'aborted'` (Esc) | `COMPLETED` ("Interrupted") | keeps running |
+| `turn.complete` | `reason: 'error'` or `'refusal'` | `ERROR` | keeps running; the status line says so |
+
+The spec had the game stop on the answer and play a game-over animation on an error. That
+cut short games on quick answers, so the game now stops only when the person does.
 
 Tools run in parallel, so the mod counts the calls in flight rather than keeping a flag.
 
@@ -251,7 +256,7 @@ claude-runner/
 │   ├── storage/statistics.ts    what is stored, the post check, the report     [PURE]
 │   └── game/
 │       ├── runner-client.tsx    the Client surface module: frame clock, keys, drawing
-│       ├── session-link.ts      Claude's phase -> start, slow, halt, crash; run ends  [PURE]
+│       ├── session-link.ts      Claude's phase -> start, slow; run start/end  [PURE]
 │       ├── game.ts              one run: jump, pause, step, collisions, combos [PURE]
 │       ├── physics.ts           gravity, jump, landing                         [PURE]
 │       ├── obstacle.ts          obstacle kinds, easter eggs, spawning, gaps    [PURE]

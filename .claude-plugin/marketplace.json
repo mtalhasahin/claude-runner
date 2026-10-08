@@ -7,8 +7,8 @@
     {
       "name": "runner",
       "source": "./",
-      "description": "Claude Runner: a small endless runner in a side pane that plays while Claude works, starts with Claude's turn and stops when Claude answers.",
-      "version": "0.1.0",
+      "description": "Claude Runner: a small endless runner in a side pane that plays while Claude works: Claude's turn starts a run, and only you end it.",
+      "version": "0.2.0",
       "license": "MIT",
       "keywords": [
         "waiting",

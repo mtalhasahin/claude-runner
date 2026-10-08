@@ -11,19 +11,13 @@ import {
 import { difficultyOf, pointsFor, speedOf } from './score'
 
 /**
- * `waiting` for Claude to start, `running`, `paused` by the person, `over`
- * after a hit, `halted` once Claude answered, `crashed` when Claude failed.
+ * `waiting` for a run to start, `running`, `paused` by the person, `over`
+ * after a hit.
  *
- * Only Claude's turn starts a run or ends one for good (session-link.ts); the
- * keys jump, pause and retry within it.
+ * Claude's turn or the person's Space starts a run; only the person ends
+ * one (session-link.ts).
  */
-export type GameStatus =
-  | 'waiting'
-  | 'running'
-  | 'paused'
-  | 'over'
-  | 'halted'
-  | 'crashed'
+export type GameStatus = 'waiting' | 'running' | 'paused' | 'over'
 
 /**
  * One run, as plain data: what the surface module keeps as its local state
@@ -147,16 +141,13 @@ export function startedRun(seed: number): GameState {
 }
 
 /**
- * Space or Up: jumps while running (or keeps the press for the landing),
- * resumes a pause, restarts after a hit. Outside Claude's turn it does
- * nothing: the game plays while Claude works.
+ * Space or Up: starts a run, jumps while running (or keeps the press for the
+ * landing), resumes a pause, restarts after a hit.
  */
 export function pressedJump(state: GameState): GameState {
   switch (state.status) {
     case 'waiting':
-    case 'halted':
-    case 'crashed':
-      return state
+      return startedRun(state.seed)
     case 'paused':
       return { ...state, status: 'running' }
     case 'over':
@@ -179,8 +170,6 @@ export function pressedPause(state: GameState): GameState {
       return { ...state, status: 'running' }
     case 'waiting':
     case 'over':
-    case 'halted':
-    case 'crashed':
       return state
   }
 }

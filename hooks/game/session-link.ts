@@ -9,16 +9,6 @@ import { newGame, startedRun, stepped } from './game'
 export const TOOL_WAIT_SPEED_FACTOR = 0.7
 
 /**
- * How long the game-over flash runs when Claude's turn fails.
- */
-export const CRASH_ANIMATION_MILLISECONDS = 1_500
-
-/**
- * How often the flash blinks.
- */
-export const CRASH_BLINK_MILLISECONDS = 250
-
-/**
  * What the hooks module hands the game, as plain data: where Claude's main
  * loop stands, which turn it is and how long it has run, the best score so
  * far, and a seed for the course.
@@ -27,7 +17,8 @@ export type LinkProps = {
   seed: number
   phase: SessionPhase
   /**
-   * Counts the turns started this session; a new value is a new run.
+   * Counts the turns started this session; a new value starts a run when
+   * none is going.
    */
   turnNumber: number
   /**
@@ -53,13 +44,9 @@ export type ClientState = {
   /**
    * Claude's turn time: set from the engine's clock at each redraw and
    * counted on the frame clock between them. The HUD's clock, which keeps
-   * going while the runner is down.
+   * going while the runner is down and stops when Claude is done.
    */
   turnMilliseconds: number
-  /**
-   * Time since Claude's turn failed: how far the game-over flash is.
-   */
-  crashMilliseconds: number
   bestScore: number
   /**
    * True when the run that just ended beat the best score it started with.
@@ -69,13 +56,10 @@ export type ClientState = {
 }
 
 /**
- * A finished run, as the game reports it to the hooks module: its score
- * alone.
+ * What the game reports to the hooks module: a run started, or a run ended
+ * with its score. Nothing else crosses.
  */
-export type RunEndedPost = {
-  kind: 'run-ended'
-  score: number
-}
+export type RunPost = { kind: 'run-started' } | { kind: 'run-ended'; score: number }
 
 function runSeedOf(props: LinkProps): number {
   return (props.seed + props.turnNumber * 7_919) | 0
@@ -93,7 +77,6 @@ export function initialClientState(props: LinkProps): ClientState {
     phase: props.phase,
     turnNumber: props.turnNumber,
     turnMilliseconds: props.turnElapsedMilliseconds,
-    crashMilliseconds: 0,
     bestScore: props.bestScore,
     isLastRunBest: false,
     areMilestonesEnabled: props.areMilestonesEnabled,
@@ -101,9 +84,17 @@ export function initialClientState(props: LinkProps): ClientState {
 }
 
 /**
- * The state after the hooks module redraws: a new turn starts a fresh run, an
- * answer halts it, a failure crashes it; the turn clock and the best score
- * take the hooks module's word.
+ * Whether a run is being played: going, or paused by the person.
+ */
+export function isRunActive(game: GameState): boolean {
+  return game.status === 'running' || game.status === 'paused'
+}
+
+/**
+ * The state after the hooks module redraws. Claude starts a run: a new turn
+ * starts one when none is going, and leaves one that is going alone. Only
+ * the person ends a run (a hit, which they may retry): Claude's answer or
+ * failure moves the clock and the status line, not the game.
  *
  * @returns the same object when nothing changed
  */
@@ -114,24 +105,13 @@ export function linkedToSession(
   const isNewTurn = props.turnNumber !== state.turnNumber
   const bestScore = Math.max(state.bestScore, props.bestScore)
 
-  if (isNewTurn && isRunningPhase(props.phase)) {
-    return {
-      game: startedRun(runSeedOf(props)),
-      phase: props.phase,
-      turnNumber: props.turnNumber,
-      turnMilliseconds: props.turnElapsedMilliseconds,
-      crashMilliseconds: 0,
-      bestScore,
-      isLastRunBest: false,
-      areMilestonesEnabled: props.areMilestonesEnabled,
-    }
-  }
-
   // While Claude works the frame clock may run ahead of the last redraw;
   // once the turn is over the engine's duration is the final word.
-  const turnMilliseconds = isRunningPhase(props.phase)
-    ? Math.max(state.turnMilliseconds, props.turnElapsedMilliseconds)
-    : props.turnElapsedMilliseconds
+  const turnMilliseconds = isNewTurn
+    ? props.turnElapsedMilliseconds
+    : isRunningPhase(props.phase)
+      ? Math.max(state.turnMilliseconds, props.turnElapsedMilliseconds)
+      : props.turnElapsedMilliseconds
 
   const isUnchanged =
     !isNewTurn &&
@@ -144,40 +124,23 @@ export function linkedToSession(
     return state
   }
 
-  const moved = {
+  const isStartingRun =
+    isNewTurn && isRunningPhase(props.phase) && !isRunActive(state.game)
+
+  return {
     ...state,
+    game: isStartingRun ? startedRun(runSeedOf(props)) : state.game,
     phase: props.phase,
     turnNumber: props.turnNumber,
     turnMilliseconds,
     bestScore,
     areMilestonesEnabled: props.areMilestonesEnabled,
   }
-
-  if (props.phase === state.phase) {
-    return moved
-  }
-
-  switch (props.phase) {
-    case 'IDLE':
-      return { ...moved, game: { ...state.game, status: 'waiting' } }
-    case 'WORKING':
-    case 'WAITING_FOR_TOOL':
-    case 'WAITING_FOR_RESPONSE':
-      return moved
-    case 'COMPLETED':
-      return { ...moved, game: { ...state.game, status: 'halted' } }
-    case 'ERROR':
-      return {
-        ...moved,
-        game: { ...state.game, status: 'crashed' },
-        crashMilliseconds: 0,
-      }
-  }
 }
 
 /**
  * The state after one frame: the run steps (slower while Claude waits on a
- * tool), Claude's turn clock and the crash flash move on.
+ * tool) and Claude's turn clock moves on while Claude works.
  */
 export function ticked(
   state: ClientState,
@@ -193,89 +156,66 @@ export function ticked(
     turnMilliseconds: isRunningPhase(state.phase)
       ? state.turnMilliseconds + milliseconds
       : state.turnMilliseconds,
-    crashMilliseconds:
-      state.game.status === 'crashed'
-        ? Math.min(
-            CRASH_ANIMATION_MILLISECONDS,
-            state.crashMilliseconds + milliseconds,
-          )
-        : state.crashMilliseconds,
   }
 }
 
-const PLAYING_STATUSES: readonly GameStatus[] = ['running', 'paused']
-
-const ENDED_STATUSES: readonly GameStatus[] = ['over', 'halted', 'crashed']
+const IDLE_STATUSES: readonly GameStatus[] = ['waiting', 'over']
 
 /**
- * Notes a run that ended between two states: a hit, Claude's answer or
- * Claude's failure taking a run that was being played. A run already over
- * that Claude then halts is not counted again.
+ * Notes a run starting or ending between two states.
  *
- * @returns the next state, its best score and flag updated, and the post to
- *   send the hooks module, or null when no run ended
+ * A run starts when the game goes from waiting or a hit to running (Claude's
+ * turn, or the person's Space); it ends on a hit. Pausing neither starts nor
+ * ends one.
+ *
+ * @returns the next state, its best score and flag updated on an end, and the
+ *   post to send the hooks module, or null when neither happened
  */
-export function notedRunEnd(
+export function notedRunChange(
   previous: ClientState,
   next: ClientState,
-): { state: ClientState; post: RunEndedPost | null } {
-  const isEnding =
-    PLAYING_STATUSES.includes(previous.game.status) &&
-    ENDED_STATUSES.includes(next.game.status)
+): { state: ClientState; post: RunPost | null } {
+  const isEnding = isRunActive(previous.game) && next.game.status === 'over'
 
-  if (!isEnding) {
-    const isNewRun =
-      next.game.status === 'running' && previous.game.status !== 'running' &&
-      previous.game.status !== 'paused'
+  if (isEnding) {
+    const score = Math.floor(next.game.score)
 
     return {
-      state: isNewRun && next.isLastRunBest ? { ...next, isLastRunBest: false } : next,
-      post: null,
+      state: {
+        ...next,
+        bestScore: Math.max(next.bestScore, score),
+        isLastRunBest: score > next.bestScore,
+      },
+      post: { kind: 'run-ended', score },
     }
   }
 
-  const score = Math.floor(next.game.score)
-  const isBest = score > next.bestScore
+  const isStarting =
+    IDLE_STATUSES.includes(previous.game.status) && isRunActive(next.game)
 
-  return {
-    state: {
-      ...next,
-      bestScore: Math.max(next.bestScore, score),
-      isLastRunBest: isBest,
-    },
-    post: { kind: 'run-ended', score },
+  if (isStarting) {
+    return { state: { ...next, isLastRunBest: false }, post: { kind: 'run-started' } }
   }
+
+  return { state: next, post: null }
 }
 
 /**
  * Whether a frame changed what is drawn. A frame that only advanced the turn
- * clock within the same second, or a finished flash, needs no redraw: the
- * game idles at no cost while the runner is down or Claude is done.
+ * clock within the same second needs no redraw: the game idles at no cost
+ * while the runner is down.
  */
 export function isRedrawNeeded(
   previous: ClientState,
   next: ClientState,
 ): boolean {
   const secondOf = (milliseconds: number) => Math.floor(milliseconds / 1000)
-  const blinkOf = (milliseconds: number) =>
-    Math.floor(milliseconds / CRASH_BLINK_MILLISECONDS)
 
   return (
     previous.game !== next.game ||
     previous.phase !== next.phase ||
     previous.bestScore !== next.bestScore ||
     previous.isLastRunBest !== next.isLastRunBest ||
-    secondOf(previous.turnMilliseconds) !== secondOf(next.turnMilliseconds) ||
-    blinkOf(previous.crashMilliseconds) !== blinkOf(next.crashMilliseconds)
-  )
-}
-
-/**
- * Whether the flash is in its dark half: the message hidden.
- */
-export function isCrashBlinkDark(state: ClientState): boolean {
-  return (
-    state.crashMilliseconds < CRASH_ANIMATION_MILLISECONDS &&
-    Math.floor(state.crashMilliseconds / CRASH_BLINK_MILLISECONDS) % 2 === 1
+    secondOf(previous.turnMilliseconds) !== secondOf(next.turnMilliseconds)
   )
 }

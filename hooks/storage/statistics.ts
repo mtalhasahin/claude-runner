@@ -72,6 +72,17 @@ export type RunEnded = {
 }
 
 /**
+ * Whether a `ui.message` post says a run started.
+ */
+export function isRunStartedPost(data: unknown): boolean {
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    Reflect.get(data, 'kind') === 'run-started'
+  )
+}
+
+/**
  * The run's end in a `ui.message` post, or null when the post is anything
  * else. The post is code's word, not a fact: its shape is checked and its
  * score bounded.

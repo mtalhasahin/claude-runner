@@ -3,7 +3,6 @@ import type { GameState } from './game'
 import { RUNNER_COLUMN, RUNNER_HEIGHT, RUNNER_WIDTH } from './game'
 import { milestoneTextOf } from './milestones'
 import type { ClientState } from './session-link'
-import { isCrashBlinkDark } from './session-link'
 
 /**
  * Rows of open air above the ground: room for a jump's peak (a little over
@@ -117,25 +116,17 @@ function messageRunOf(state: ClientState, width: number): Run {
 
   switch (game.status) {
     case 'waiting':
-      return { text: centered('Waiting for Claude...'), isDim: true }
+      return { text: centered('Waiting for Claude · SPACE to play'), isDim: true }
     case 'paused':
       return { text: centered('PAUSED  ·  P to resume'), color: '#d4a72c' }
     case 'over':
       return state.isLastRunBest
-        ? { text: centered('NEW BEST!  ·  SPACE to retry'), color: '#d4a72c', isBold: true }
+        ? {
+            text: centered(`NEW BEST ${Math.floor(game.score)}  ·  SPACE to retry`),
+            color: '#d4a72c',
+            isBold: true,
+          }
         : { text: centered('GAME OVER  ·  SPACE to retry'), color: '#e5534b', isBold: true }
-    case 'halted':
-      return {
-        text: centered(
-          `${state.isLastRunBest ? 'New best!' : 'Run over'}  ·  Score ${Math.floor(game.score)}`,
-        ),
-        color: state.isLastRunBest ? '#d4a72c' : '#57ab5a',
-        isBold: state.isLastRunBest,
-      }
-    case 'crashed':
-      return isCrashBlinkDark(state)
-        ? { text: ' '.repeat(width) }
-        : { text: centered('GAME OVER'), color: '#e5534b', isBold: true }
     case 'running':
       return runningMessageOf(state, centered)
   }
@@ -288,7 +279,7 @@ function playfieldOf(state: GameState, width: number): Cell[][] {
  * runs, tuck in the air and splay on a hit.
  */
 function runnerSpriteOf(state: GameState): [string, string] {
-  if (state.status === 'over' || state.status === 'crashed') {
+  if (state.status === 'over') {
     return ['[x]', '/ \\']
   }
 

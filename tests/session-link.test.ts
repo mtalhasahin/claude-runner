@@ -1,14 +1,12 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { pressedJump } from '../hooks/game/game'
+import { pressedJump, pressedPause } from '../hooks/game/game'
 import type { ClientState, LinkProps } from '../hooks/game/session-link'
 import {
-  CRASH_ANIMATION_MILLISECONDS,
   initialClientState,
-  isCrashBlinkDark,
   isRedrawNeeded,
   linkedToSession,
-  notedRunEnd,
+  notedRunChange,
   ticked,
 } from '../hooks/game/session-link'
 
@@ -42,23 +40,30 @@ function runFor(state: ClientState, milliseconds: number): ClientState {
   return current
 }
 
+function hit(state: ClientState): ClientState {
+  return { ...state, game: { ...state.game, status: 'over' } }
+}
+
 describe('session-link', () => {
   test('idle, the game waits; a turn starts a run', () => {
     const idle = initialClientState(IDLE)
 
     expect(idle.game.status).toBe('waiting')
     expect(runFor(idle, 1_000).game).toBe(idle.game)
+    expect(linkedToSession(idle, WORKING).game.status).toBe('running')
+  })
 
-    const working = linkedToSession(idle, WORKING)
+  test('the person can start a run with Space, Claude or not', () => {
+    const idle = initialClientState(IDLE)
 
-    expect(working.game.status).toBe('running')
+    expect(pressedJump(idle.game).status).toBe('running')
   })
 
   test('a pane opened mid-turn starts running at once', () => {
     expect(initialClientState(WORKING).game.status).toBe('running')
   })
 
-  test('the same phase again changes nothing', () => {
+  test('the same props again change nothing', () => {
     const working = initialClientState(WORKING)
 
     expect(linkedToSession(working, WORKING)).toBe(working)
@@ -76,44 +81,67 @@ describe('session-link', () => {
     ).toBeLessThan(1e-6)
   })
 
-  test('thinking after a tool keeps the same run going', () => {
-    const played = runFor(initialClientState(WORKING), 1_000)
-
-    const thinking = linkedToSession(played, {
+  test("Claude's answer does not stop the run; the person does", () => {
+    const played = runFor(initialClientState(WORKING), 2_000)
+    const answered = linkedToSession(played, {
       ...WORKING,
-      phase: 'WAITING_FOR_RESPONSE',
+      phase: 'COMPLETED',
+      turnElapsedMilliseconds: 2_000,
     })
 
-    expect(thinking.game).toBe(played.game)
-    expect(thinking.game.status).toBe('running')
+    expect(answered.game).toBe(played.game)
+
+    const keptPlaying = runFor(answered, 3_000)
+
+    expect(keptPlaying.game.score, 'still scoring').toBeGreaterThan(played.game.score)
+    expect(keptPlaying.turnMilliseconds, 'the turn clock stopped').toBe(2_000)
   })
 
-  test('an answer halts the run and keeps its score', () => {
+  test("Claude's failure does not stop the run either", () => {
+    const played = runFor(initialClientState(WORKING), 1_000)
+    const failed = linkedToSession(played, { ...WORKING, phase: 'ERROR' })
+
+    expect(failed.game).toBe(played.game)
+    expect(failed.game.status).toBe('running')
+  })
+
+  test('a new turn keeps a run that is going, paused or not', () => {
     const played = runFor(initialClientState(WORKING), 2_000)
-    const completed = linkedToSession(played, { ...WORKING, phase: 'COMPLETED' })
+    const answered = linkedToSession(played, { ...WORKING, phase: 'COMPLETED' })
+    const nextTurn = linkedToSession(answered, { ...WORKING, turnNumber: 2 })
 
-    expect(completed.game.status).toBe('halted')
-    expect(completed.game.score).toBe(played.game.score)
-    expect(runFor(completed, 1_000).game).toBe(completed.game)
-    expect(pressedJump(completed.game)).toBe(completed.game)
+    expect(nextTurn.game).toBe(played.game)
+
+    const paused = { ...answered, game: pressedPause(answered.game) }
+
+    expect(linkedToSession(paused, { ...WORKING, turnNumber: 2 }).game.status).toBe(
+      'paused',
+    )
   })
 
-  test('the turn clock keeps going after a hit, stops after the answer', () => {
-    const working = initialClientState(WORKING)
-    const hit = { ...working, game: { ...working.game, status: 'over' as const } }
+  test('a new turn starts a fresh run after a hit', () => {
+    const played = runFor(initialClientState(WORKING), 2_000)
+    const answered = linkedToSession(hit(played), { ...WORKING, phase: 'COMPLETED' })
+    const nextTurn = linkedToSession(answered, { ...WORKING, turnNumber: 2 })
 
-    const afterHit = runFor(hit, 3_000)
+    expect(nextTurn.game.status).toBe('running')
+    expect(nextTurn.game.score).toBe(0)
+    expect(nextTurn.turnMilliseconds).toBe(0)
+  })
+
+  test('the turn clock keeps going after a hit, stops at the answer', () => {
+    const afterHit = runFor(hit(initialClientState(WORKING)), 3_000)
 
     expect(afterHit.turnMilliseconds).toBeGreaterThanOrEqual(3_000)
 
-    const completed = linkedToSession(afterHit, {
+    const answered = linkedToSession(afterHit, {
       ...WORKING,
       phase: 'COMPLETED',
       turnElapsedMilliseconds: 3_250,
     })
 
-    expect(completed.turnMilliseconds, "the engine's duration").toBe(3_250)
-    expect(runFor(completed, 3_000).turnMilliseconds).toBe(3_250)
+    expect(answered.turnMilliseconds, "the engine's duration").toBe(3_250)
+    expect(runFor(answered, 3_000).turnMilliseconds).toBe(3_250)
   })
 
   test('a pane opened mid-turn shows the turn time so far, not 00:00', () => {
@@ -132,66 +160,51 @@ describe('session-link', () => {
     expect(redrawn.turnMilliseconds, 'the frame clock ran ahead').toBe(61_600)
   })
 
-  test('a run ending posts its score once; a halt after a hit posts nothing', () => {
+  test('a hit posts the score once, and a best beats the old one', () => {
     const played = runFor(initialClientState({ ...WORKING, bestScore: 5 }), 2_000)
-    const hit = { ...played, game: { ...played.game, status: 'over' as const } }
+    const noted = notedRunChange(played, hit(played))
+    const score = Math.floor(played.game.score)
 
-    const noted = notedRunEnd(played, hit)
-
-    expect(noted.post).toEqual({ kind: 'run-ended', score: Math.floor(played.game.score) })
+    expect(noted.post).toEqual({ kind: 'run-ended', score })
     expect(noted.state.isLastRunBest).toBe(true)
-    expect(noted.state.bestScore).toBe(Math.floor(played.game.score))
+    expect(noted.state.bestScore).toBe(score)
 
-    const halted = linkedToSession(noted.state, { ...WORKING, phase: 'COMPLETED' })
+    const answered = linkedToSession(noted.state, { ...WORKING, phase: 'COMPLETED' })
 
-    expect(notedRunEnd(noted.state, halted).post, 'counted once').toBeNull()
+    expect(notedRunChange(noted.state, answered).post, 'counted once').toBeNull()
   })
 
   test('a score under the best is not a new best', () => {
-    const played = runFor(
-      initialClientState({ ...WORKING, bestScore: 9_999 }),
-      2_000,
-    )
+    const played = runFor(initialClientState({ ...WORKING, bestScore: 9_999 }), 2_000)
+    const noted = notedRunChange(played, hit(played))
 
-    const halted = linkedToSession(played, { ...WORKING, phase: 'COMPLETED' })
-    const noted = notedRunEnd(played, halted)
-
-    expect(noted.post?.score).toBe(Math.floor(played.game.score))
     expect(noted.state.isLastRunBest).toBe(false)
     expect(noted.state.bestScore).toBe(9_999)
   })
 
-  test('a failure crashes the run and blinks GAME OVER for 1.5 s', () => {
-    const played = runFor(initialClientState(WORKING), 1_000)
-    const crashed = linkedToSession(played, { ...WORKING, phase: 'ERROR' })
+  test('a run starting posts it; a pause neither starts nor ends one', () => {
+    const idle = initialClientState(IDLE)
+    const started = { ...idle, game: pressedJump(idle.game) }
 
-    expect(crashed.game.status).toBe('crashed')
-    expect(isCrashBlinkDark(crashed)).toBe(false)
-    expect(isCrashBlinkDark(ticked(crashed, 300, COLUMNS))).toBe(true)
+    expect(notedRunChange(idle, started).post).toEqual({ kind: 'run-started' })
 
-    const settled = runFor(crashed, CRASH_ANIMATION_MILLISECONDS + 500)
+    const paused = { ...started, game: pressedPause(started.game) }
 
-    expect(settled.crashMilliseconds).toBe(CRASH_ANIMATION_MILLISECONDS)
-    expect(isCrashBlinkDark(settled)).toBe(false)
-    expect(isRedrawNeeded(settled, ticked(settled, 60, COLUMNS))).toBe(false)
-  })
+    expect(notedRunChange(started, paused).post).toBeNull()
+    expect(notedRunChange(paused, started).post).toBeNull()
 
-  test('the next turn starts a fresh run', () => {
-    const played = runFor(initialClientState(WORKING), 2_000)
-    const completed = linkedToSession(played, { ...WORKING, phase: 'COMPLETED' })
-    const next = linkedToSession(completed, { ...WORKING, turnNumber: 2 })
+    const over = hit(runFor(started, 500))
+    const retried = { ...over, game: pressedJump(over.game) }
 
-    expect(next.game.status).toBe('running')
-    expect(next.game.score).toBe(0)
-    expect(next.turnMilliseconds).toBe(0)
+    expect(notedRunChange(over, retried).post).toEqual({ kind: 'run-started' })
   })
 
   test('a frame that changes nothing on screen asks for no redraw', () => {
-    const completed = linkedToSession(initialClientState(WORKING), {
+    const down = linkedToSession(hit(initialClientState(WORKING)), {
       ...WORKING,
       phase: 'COMPLETED',
     })
 
-    expect(isRedrawNeeded(completed, ticked(completed, 60, COLUMNS))).toBe(false)
+    expect(isRedrawNeeded(down, ticked(down, 60, COLUMNS))).toBe(false)
   })
 })

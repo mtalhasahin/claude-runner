@@ -7,8 +7,9 @@ import type { ClientState, LinkProps } from './session-link'
 import {
   initialClientState,
   isRedrawNeeded,
+  isRunActive,
   linkedToSession,
-  notedRunEnd,
+  notedRunChange,
   ticked,
 } from './session-link'
 
@@ -46,16 +47,16 @@ function columnsOf(surface: ClientSurface<ClientState>): number {
 }
 
 /**
- * The next state with a run's end noted: the best score and its flag
- * updated, and the score posted to the hooks module, which keeps the
- * statistics. Nothing but the score crosses.
+ * The next state with a run's start or end noted, and posted to the hooks
+ * module, which keeps the statistics and knows not to close the pane under a
+ * run. Nothing but that and a finished run's score crosses.
  */
 function advanced(
   surface: ClientSurface<ClientState>,
   previous: ClientState,
   next: ClientState,
 ): ClientState {
-  const noted = notedRunEnd(previous, next)
+  const noted = notedRunChange(previous, next)
 
   if (noted.post !== null) {
     surface.post(noted.post)
@@ -99,6 +100,10 @@ function started(
   })
 
   surface.setState(instance.state)
+
+  if (isRunActive(instance.state.game)) {
+    surface.post({ kind: 'run-started' })
+  }
 
   return instance
 }

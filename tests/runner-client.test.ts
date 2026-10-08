@@ -1,5 +1,5 @@
 import type { On, RenderPropsOf } from 'claude-code'
-import type { Engine } from 'claude-code/testing'
+import type { Engine, MockClock } from 'claude-code/testing'
 import { describe, expect, mock, test, tier } from 'claude-code/testing'
 
 import { FRAME_ROWS } from '../hooks/game/renderer'
@@ -20,11 +20,14 @@ const GAME_COLUMNS = 38
 /**
  * Answers the engine beneath the plugin: turns, commands and panes, a wide
  * terminal that places every pane.
+ *
+ * @returns the ids of the panes closed, in order, and the engine's clock
  */
-function seatsEngine(on: On): void {
+function seatsEngine(on: On): { closed: string[]; clock: MockClock } {
   const openPaneIds = new Set<string>()
+  const closed: string[] = []
 
-  mock.clock(on)
+  const clock = mock.clock(on)
   mock.store(on)
   on('session.start', ($, event) => ({ cwd: event.cwd }))
   on('turn.start', ($, event) => ({ turnId: event.turnId }))
@@ -36,6 +39,7 @@ function seatsEngine(on: On): void {
     return { value: { isPlaced: true as const } }
   })
   on('ui.close', ($, event) => {
+    closed.push(event.id)
     openPaneIds.delete(event.id)
 
     return { value: undefined }
@@ -49,6 +53,8 @@ function seatsEngine(on: On): void {
       isPlaced: true,
     })),
   }))
+
+  return { closed, clock }
 }
 
 async function mountedPane($: Engine, surface: 'terminal' | 'desktop') {
@@ -83,7 +89,7 @@ function completion(
 
 describe('runner-client', () => {
   for (const surface of ['terminal', 'desktop'] as const) {
-    test(`${surface}: waits, runs with the turn, halts on the answer`, async (
+    test(`${surface}: waits, runs with the turn, keeps running after the answer`, async (
       $,
       on,
     ) => {
@@ -110,27 +116,25 @@ describe('runner-client', () => {
       expect(await game(/Score 0001\d .* Session 00:01/), 'scoring').toBeDefined()
 
       await $.turn.complete(completion('answer', 'turn-1'))
-
-      const halted = await game(/New best!  ·  Score 1\d/)
-
-      expect(halted, 'halted on the answer; with no best yet, a new one').toBeDefined()
-
-      await ui.advance(2_000)
+      await ui.advance(600)
 
       expect(
-        await game(/Session 00:01/),
-        "stopped at the engine's duration",
+        await game(/Score 00(01[6-9]|02\d) .* Session 00:01/),
+        "still scoring; the clock at the engine's duration",
       ).toBeDefined()
 
       await $.turn.start({ text: 'And again', turnId: 'turn-2' })
 
-      expect(await game(/Score 00000 .* Session 00:00/), 'a fresh run').toBeDefined()
+      expect(
+        await game(/Score 00(01[6-9]|02\d) .* Session 00:00/),
+        'the next turn keeps the run going, its clock from zero',
+      ).toBeDefined()
 
       await ui.unmount()
     })
   }
 
-  test('a failed turn flashes GAME OVER', async ($, on) => {
+  test('a failed turn leaves the run going', async ($, on) => {
     seatsEngine(on)
 
     const ui = await mountedPane($, 'terminal')
@@ -139,22 +143,54 @@ describe('runner-client', () => {
     await $.turn.start({ text: 'hi', turnId: 'turn-1' })
     await ui.advance(600)
     await $.turn.complete(completion('error', 'turn-1'))
+    await ui.advance(600)
 
-    expect(await game(/GAME OVER/), 'lit').toBeDefined()
-
-    await ui.advance(300)
-
-    expect(await game(/GAME OVER/), 'dark half of the blink').toBeUndefined()
-
-    await ui.advance(2_000)
-
-    expect(await game(/GAME OVER/), 'settled lit').toBeDefined()
-    expect(
-      await ui.find({ type: 'Text', text: '[x]', in: 'game' }),
-      'the runner shows the crash',
-    ).toBeDefined()
+    expect(await game(/GAME OVER/)).toBeUndefined()
+    expect(await game(/Score 0001\d/), 'still scoring').toBeDefined()
 
     await ui.unmount()
+  })
+
+  test('idle, Space starts a run without Claude', async ($, on) => {
+    seatsEngine(on)
+
+    const ui = await mountedPane($, 'terminal')
+    const game = (text: RegExp) => ui.find({ type: 'Text', text, in: 'game' })
+
+    expect(await game(/SPACE to play/)).toBeDefined()
+
+    await ui.key({ key: ' ', in: 'game' })
+    await ui.advance(1_200)
+
+    expect(await game(/Score 0001\d .* Session 00:00/), 'no Claude clock').toBeDefined()
+
+    await ui.unmount()
+  })
+
+  test('after the answer the pane stays while the person plays, closes 5 s after the run ends', async (
+    $,
+    on,
+  ) => {
+    const { closed, clock } = seatsEngine(on)
+
+    const ui = await mountedPane($, 'terminal')
+
+    await $.turn.start({ text: 'hi', turnId: 'turn-1' })
+    await clock.advance(10)
+    await ui.advance(1_000)
+    await $.turn.complete(completion('answer', 'turn-1'))
+    await clock.advance(30_000)
+
+    expect(closed, 'the run is going').toEqual([])
+
+    await ui.post({ kind: 'run-ended', score: 300 }, { in: 'game' })
+    await clock.advance(4_999)
+
+    expect(closed, 'the last score still shows').toEqual([])
+
+    await clock.advance(1)
+
+    expect(closed).toEqual(['runner'])
   })
 
   test('keys: Space and Up jump, P pauses, Space retries a hit', async (
@@ -175,7 +211,7 @@ describe('runner-client', () => {
     await ui.advance(6_000)
 
     expect(
-      await game(/NEW BEST!  ·  SPACE to retry/),
+      await game(/NEW BEST \d+  ·  SPACE to retry/),
       'nobody jumped; with no best yet, the first run is one',
     ).toBeDefined()
 

@@ -15,6 +15,7 @@ import { INITIAL_SESSION_STATE, nextSessionState } from './session-state'
 import type { Statistics } from './storage/statistics'
 import {
   STATISTICS_STORE_KEY,
+  isRunStartedPost,
   runEndedOf,
   statisticsOf,
   statisticsTextOf,
@@ -38,6 +39,11 @@ type Runner = {
    * it may close again after the answer. A pane the person opened is theirs.
    */
   isPaneOpenedByTurn: boolean
+  /**
+   * True while the person has a run going or paused: the pane does not close
+   * under it, whatever Claude does.
+   */
+  isRunActive: boolean
   closeTimer: Timer | null
   /**
    * Seeds the game's obstacle sequence; taken from the clock at the session's
@@ -164,8 +170,10 @@ function cancelClose(runner: Runner): void {
 }
 
 /**
- * After an answer, closes the pane the turn opened, a few seconds on so the
- * final score shows; the next turn opens it again. An error leaves it up.
+ * Once Claude has answered and no run is being played, closes the pane the
+ * turn opened, a few seconds on so the final score shows; the next turn
+ * opens it again. Asked again when either of the two happens. An error
+ * leaves it up.
  */
 function scheduleCloseAfterAnswer($: EngineInterface, runner: Runner): void {
   cancelClose(runner)
@@ -174,6 +182,7 @@ function scheduleCloseAfterAnswer($: EngineInterface, runner: Runner): void {
     runner.isCloseOnCompleteEnabled &&
     runner.isPaneOpen &&
     runner.isPaneOpenedByTurn &&
+    !runner.isRunActive &&
     runner.sessionState.phase === 'COMPLETED'
 
   if (isClosing) {
@@ -192,6 +201,7 @@ async function closeAfterAnswer(
   const isStillDone =
     runner.isPaneOpen &&
     runner.isPaneOpenedByTurn &&
+    !runner.isRunActive &&
     runner.sessionState.phase === 'COMPLETED'
 
   if (isStillDone) {
@@ -200,6 +210,7 @@ async function closeAfterAnswer(
     // this module raised itself.
     runner.isPaneOpen = false
     runner.isPaneOpenedByTurn = false
+    runner.isRunActive = false
   }
 }
 
@@ -221,6 +232,7 @@ export function register(on: On, options: PluginOptions): void {
     sessionState: INITIAL_SESSION_STATE,
     isPaneOpen: false,
     isPaneOpenedByTurn: false,
+    isRunActive: false,
     closeTimer: null,
     gameSeed: 1,
     statistics: null,
@@ -286,9 +298,21 @@ export function register(on: On, options: PluginOptions): void {
 
   on('ui.message', async ($, event, next) => {
     const isOwnGame = event.requestId === PANE_ID && event.element === GAME_KEY
-    const runEnded = isOwnGame ? runEndedOf(event.data) : null
+
+    if (!isOwnGame) {
+      return next(event)
+    }
+
+    if (isRunStartedPost(event.data)) {
+      runner.isRunActive = true
+      cancelClose(runner)
+    }
+
+    const runEnded = runEndedOf(event.data)
 
     if (runEnded !== null) {
+      runner.isRunActive = false
+      scheduleCloseAfterAnswer($, runner)
       await changeStatistics($, runner, statistics =>
         withRunEnded(statistics, runEnded.score),
       ).catch(() => undefined)
@@ -327,6 +351,7 @@ export function register(on: On, options: PluginOptions): void {
       await $.ui.close({ id: PANE_ID })
       runner.isPaneOpen = false
       runner.isPaneOpenedByTurn = false
+      runner.isRunActive = false
       cancelClose(runner)
       await $.store.set(STORE_KEYS.isClosedByPerson, true)
 
@@ -352,6 +377,7 @@ export function register(on: On, options: PluginOptions): void {
 
     runner.isPaneOpen = false
     runner.isPaneOpenedByTurn = false
+    runner.isRunActive = false
     cancelClose(runner)
 
     if (event.origin.kind === 'person') {

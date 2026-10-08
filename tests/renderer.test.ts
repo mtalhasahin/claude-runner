@@ -15,7 +15,6 @@ function clientStateOf(
     phase: 'WORKING',
     turnNumber: 1,
     turnMilliseconds: 0,
-    crashMilliseconds: 0,
     bestScore: 6_210,
     isLastRunBest: false,
     areMilestonesEnabled: true,

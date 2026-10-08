@@ -1,7 +1,7 @@
 {
   "name": "runner",
-  "version": "0.1.0",
-  "description": "Claude Runner: a small endless-runner side pane that plays while Claude works. It opens when a turn starts, follows the session's state (working, waiting for a tool, thinking, completed, error) and stops when Claude answers. /runner opens or closes it by hand.",
+  "version": "0.2.0",
+  "description": "Claude Runner: a small endless-runner side pane that plays while Claude works. It opens when a turn starts, a run follows the session's state (working, waiting for a tool, thinking) and goes on until you stop: a quick answer does not end your game. /runner opens or closes it by hand.",
   "author": {
     "name": "mtalhasahin"
   },

@@ -55,13 +55,13 @@ function playedByBot(state: GameState, milliseconds: number): GameState {
 }
 
 describe('game', () => {
-  test('a game waiting for Claude ignores the keys and the clock', () => {
+  test('a waiting game ignores the clock and P; Space starts a run', () => {
     const waiting = newGame(1)
 
     expect(waiting.status).toBe('waiting')
     expect(stepped(waiting, 1_000, PLAYFIELD_COLUMNS)).toBe(waiting)
-    expect(pressedJump(waiting)).toBe(waiting)
     expect(pressedPause(waiting)).toBe(waiting)
+    expect(pressedJump(waiting).status).toBe('running')
   })
 
   test('a slower course scrolls and scores slower, jumps unchanged', () => {
@@ -230,7 +230,6 @@ describe('game', () => {
           phase: 'WORKING',
           turnNumber: 1,
           turnMilliseconds: 0,
-          crashMilliseconds: 0,
           bestScore: 0,
           isLastRunBest: false,
           areMilestonesEnabled: true,
@@ -274,7 +273,6 @@ describe('game', () => {
         phase: 'WORKING',
         turnNumber: 1,
         turnMilliseconds: 8_000,
-        crashMilliseconds: 0,
         bestScore: 6_210,
         isLastRunBest: false,
         areMilestonesEnabled: true,
