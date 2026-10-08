@@ -89,10 +89,23 @@ checks that post's shape and bounds the score before counting it.
 
 ---
 
-## Running it
+## Installing
+
+In Claude Code:
+
+```
+/plugin marketplace add mtalhasahin/claude-runner
+/plugin install runner@runner
+```
+
+Then start a new session and type a prompt. It needs a Claude Code with function hooks (built
+on 2.1.278 and 2.1.293) and a terminal: the desktop app loads the plugin and counts the
+statistics but does not draw plugin panes yet.
+
+To run it from a clone instead, for one session:
 
 ```bash
-claude --plugin-dir C:\Users\talha\source\repos\claude-runner
+claude --plugin-dir <path-to-the-clone>
 ```
 
 Then type a prompt. On a wide enough terminal the pane opens on its own; anywhere, `/runner`

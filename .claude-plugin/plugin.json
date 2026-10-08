@@ -5,6 +5,10 @@
   "author": {
     "name": "mtalhasahin"
   },
+  "homepage": "https://github.com/mtalhasahin/claude-runner",
+  "repository": "https://github.com/mtalhasahin/claude-runner",
+  "license": "MIT",
+  "keywords": ["waiting", "game", "endless-runner", "pane", "function-hooks", "mod"],
   "userConfig": {
     "autoOpen": {
       "type": "boolean",
